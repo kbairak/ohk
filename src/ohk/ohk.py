@@ -1,11 +1,12 @@
-import os
 import contextlib
+import os
 import re
+import shlex
+import subprocess
 import sys
 import threading
 
 import urwid
-
 
 ENCODING = "utf8"
 
@@ -227,16 +228,6 @@ class MyThread(threading.Thread):
                 os.write(self.pipe, chunk.encode(ENCODING))
 
 
-old_stdin_fileno = sys.stdin.fileno()
-new_stdin_fileno = os.dup(old_stdin_fileno)
-os.dup2(os.open("/dev/tty", os.O_RDONLY), old_stdin_fileno)
-
-old_stdout_fileno = sys.stdout.fileno()
-new_stdout_fileno = os.dup(old_stdout_fileno)
-ttyout_fileno = os.open("/dev/tty", os.O_WRONLY)
-os.dup2(ttyout_fileno, old_stdout_fileno)
-
-
 def input_filter(keys, raw):
     global output
     if keys == ["enter"]:
@@ -351,12 +342,8 @@ def update_main_widget():
         del first_column.contents[len(cells) + 1:]
 
     widths, padding = get_widths()
-    try:
-        column_count = len(text.columns)
-    except IndexError:
-        column_count = 0
 
-    for j in range(column_count):
+    for j in range(len(text.columns)):
         if widths is not None:
             options = ('weight', widths[j])
         else:
@@ -370,7 +357,7 @@ def update_main_widget():
             except Exception:
                 options = ()
             else:
-                options = ('weight', widths[j] / loop.screen_size[0])
+                options = ('weight', widths[j])
             with replace(
                 pile,
                 0,
@@ -388,15 +375,17 @@ def update_main_widget():
                     lambda: urwid.Text("", wrap="ellipsis"),
                 ) as text_widget:
                     try:
-                        text_widget.set_text(row[j])
+                        if text_widget.get_text()[0] != row[j]:
+                            text_widget.set_text(row[j])
                     except IndexError:
-                        text_widget.set_text("")
+                        if text_widget.get_text()[0] != "":
+                            text_widget.set_text("")
             del pile.contents[len(cells) + 1:]
 
-    del main_widget.contents[column_count + 1:]
+    del main_widget.contents[len(text.columns) + 1:]
     if padding:
         with replace(main_widget,
-                     column_count + 1,
+                     len(text.columns) + 1,
                      lambda: urwid.Pile([]),
                      'weight',
                      padding):
@@ -493,13 +482,37 @@ def pipe_callback(chunk):
 
 
 def cmd():
+    keyboard_input = sys.stdin.fileno()
+    pipe_input = os.dup(keyboard_input)
+    os.dup2(os.open("/dev/tty", os.O_RDONLY), keyboard_input)
+
+    old_stdout_fileno = sys.stdout.fileno()
+    pipe_output = os.dup(old_stdout_fileno)
+    tty_output = os.open("/dev/tty", os.O_WRONLY)
+    os.dup2(tty_output, old_stdout_fileno)
+
+    if os.isatty(pipe_input):
+        os.write(tty_output, "Enter command: ".encode(ENCODING))
+        command = []
+        while True:
+            c = os.read(pipe_input, 1).decode(ENCODING)
+            if c == "\n":
+                break
+            command.append(c)
+        command = "".join(command)
+        process = subprocess.Popen(shlex.split(command),
+                                   stdout=subprocess.PIPE,
+                                   text=True,
+                                   encoding=ENCODING)
+        pipe_input = process.stdout.fileno()
+
     pipe = loop.watch_pipe(pipe_callback)
     try:
-        MyThread(new_stdin_fileno, pipe).start()
+        MyThread(pipe_input, pipe).start()
         loop.run()
     finally:
         os.close(pipe)
-    with open(new_stdout_fileno, 'w') as f:
+    with open(pipe_output, 'w') as f:
         f.write(output + "\n")
 
 
@@ -511,6 +524,6 @@ if __name__ == "__main__":
 # - [x] Take checkboxes into account
 # - [x] Spinner
 # - [x] Find a way to align columns to the left
-# - [ ] Handle all keyboard shortcuts
+# - [x] Handle all keyboard shortcuts
 # - [ ] Popup at the end
 # - [ ] Decorate
