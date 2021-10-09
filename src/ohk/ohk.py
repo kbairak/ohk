@@ -1,3 +1,4 @@
+import argparse
 import contextlib
 import itertools
 import os
@@ -8,6 +9,7 @@ import sys
 import threading
 
 import urwid
+
 
 ENCODING = "utf8"
 
@@ -26,7 +28,7 @@ def find_spaces(line):
 
 
 class Text:
-    def __init__(self, text=""):
+    def __init__(self):
         self.lines = [""]
         self.spaces = set()
         self.columns = []
@@ -36,8 +38,6 @@ class Text:
         self.matching_lines = []
         self.selected_lines = set()
         self.selected_columns = set()
-
-        self.feed(text)
 
     def feed(self, text):
         for c in text:
@@ -297,9 +297,6 @@ def update_query_widget():
     query_widget.set_caption("".join(caption))
 
 
-update_query_widget()
-
-
 def on_query_change(edit, new_query):
     text.query_string = new_query
     update_main_widget()
@@ -362,9 +359,6 @@ def get_widths():
     else:
         padding = screen_width - text_width - 4
 
-    if thread_exited:
-        with open('log.txt', 'a') as f:
-            f.write(f"{widths} {padding}, {screen_width}\n")
     return widths, padding
 
 
@@ -504,10 +498,25 @@ def read_command(msg, in_fd):
     return "".join(command)
 
 
+parser = argparse.ArgumentParser()
+parser.add_argument("-f", "--fuzzy", action="store_true")
+parser.add_argument("-r", "--regex", action="store_true")
+parser.add_argument("-i", "--case-insensitive", action="store_true")
+
+
 def cmd():
     global pipe_input
+
+    args = parser.parse_args()
+    if args.fuzzy:
+        text.search_mode = "fuzzy"
+    elif args.regex:
+        text.search_mode = "regex"
+    text.case_sensitive = not args.case_insensitive
+
+    update_query_widget()
+
     if os.isatty(pipe_input):
-        os.write(tty_output, "Enter command: ".encode(ENCODING))
         command = read_command("Enter command: ", pipe_input)
         process = subprocess.Popen(shlex.split(command),
                                    stdout=subprocess.PIPE,
@@ -522,7 +531,10 @@ def cmd():
     finally:
         os.close(pipe)
     if os.isatty(pipe_output):
-        command = read_command("Pipe output to: ", keyboard_input)
+        command = read_command(
+            "Pipe output to (use xargs to pass as arguments): ",
+            keyboard_input,
+        )
         process = subprocess.Popen(
             shlex.split(command),
             stdin=subprocess.PIPE,
@@ -553,5 +565,7 @@ if __name__ == "__main__":
 # - [x] Ask follow-up command at the end
 # - [x] Add case-insensitive trigger
 # - [x] Command line options (-i etc)
-# - [ ] argparse
+# - [x] argparse
 # - [ ] Decorate
+# - [ ] When asking for following command, offer to open ohk again
+# - [ ] Shortcuts for select all/none rows/columns
