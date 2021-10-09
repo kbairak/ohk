@@ -181,6 +181,11 @@ class MyThread(threading.Thread):
 
 def input_filter(keys, raw):
     global output, text
+
+    if help_visible:
+        hide_help()
+        return []
+
     if keys == ["enter"]:
         output = text.result
         raise urwid.ExitMainLoop()
@@ -284,6 +289,9 @@ def input_filter(keys, raw):
         update_query_widget()
         update_main_widget()
 
+    elif keys == ["meta /"]:
+        show_help()
+
     else:
         frame_widget.focus_position = 0
         return keys
@@ -300,6 +308,57 @@ loop = urwid.MainLoop(
     ]),
     input_filter=input_filter,
 )
+
+
+help_visible = False
+
+
+def show_help():
+    global help_visible
+    if help_visible:
+        return
+    loop.widget = urwid.Overlay(
+        urwid.LineBox(urwid.Filler(
+            urwid.Padding(urwid.Text(
+                "\n\n".join((
+                    "Shortcuts:",
+                    "- Esc: ",
+                    "    Quit ohk",
+                    "- Enter: ",
+                    "    Finalize selection",
+                    "- Alt-E: ",
+                    "    Change search mode",
+                    "- Alt-I: ",
+                    "    Change case sensitivity",
+                    "- ←↓↑→ / Alt-hjkl / (shift) tab: ",
+                    "    Focus rows/columns",
+                    "- Space: ",
+                    "    Select row/column",
+                    "- Alt-123456789: ",
+                    "    Select numbered column",
+                    "- Alt-A/C: ",
+                    "    Select all/none rows/columns",
+                    "- Alt-R: ",
+                    "    Rerun ohk with currently selected output",
+                ))
+            ), left=2, right=2),
+            valign="top",
+        )),
+        frame_widget,
+        align="center",
+        width=('relative', 60),
+        valign="middle",
+        height=('relative', 70),
+    )
+    help_visible = True
+
+
+def hide_help():
+    global help_visible
+    if not help_visible:
+        return
+    loop.widget = frame_widget
+    help_visible = False
 
 
 def update_query_widget():
@@ -468,34 +527,9 @@ def update_footer_widget(_=None, user_data=None):
 
     with replace(footer_widget,
                  next(c),
-                 lambda: urwid.Text("")) as widget:
-        widget.set_text("Alt-E: Change search mode, "
-                        "Alt-I: Change case sensitivity")
-
-    with replace(footer_widget,
-                 next(c),
-                 lambda: urwid.Text("")) as widget:
-        widget.set_text("←↓↑→ / Alt-hjkl / (shift) tab: focus rows/columns")
-
-    with replace(footer_widget,
-                 next(c),
-                 lambda: urwid.Text("")) as widget:
-        widget.set_text("space: select row/column")
-
-    with replace(footer_widget,
-                 next(c),
-                 lambda: urwid.Text("")) as widget:
-        widget.set_text("Alt-123456789: select numbered column")
-
-    with replace(footer_widget,
-                 next(c),
-                 lambda: urwid.Text("")) as widget:
-        widget.set_text("Alt-a/c: select all/none rows/columns")
-
-    with replace(footer_widget,
-                 next(c),
-                 lambda: urwid.Text("")) as widget:
-        widget.set_text("Alt-R: Rerun ohk with currently selected output")
+                 lambda: urwid.Text("Alt-/ for help",
+                                    align="right")) as widget:
+        pass
 
 
 update_footer_widget()
@@ -592,8 +626,9 @@ if __name__ == "__main__":
 # - [x] argparse
 # - [x] Shortcuts for select all/none rows/columns
 # - [x] Incrementally run ohk again (for compex searches etc)
+# - [x] Help popup
 # - [ ] Decorate
 # - [ ] When asking for following command, offer to open ohk again to its
 #       output
-# - [ ] Help popup
 # - [ ] Organize code better
+# - [ ] Select column with mouse
