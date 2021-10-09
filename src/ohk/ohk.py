@@ -1,4 +1,5 @@
 import contextlib
+import itertools
 import os
 import re
 import shlex
@@ -190,16 +191,24 @@ def input_filter(keys, raw):
     if keys == ["enter"]:
         output = text.result
         raise urwid.ExitMainLoop()
+
     elif keys == ["esc"]:
         output = ""
         raise urwid.ExitMainLoop()
+
     elif keys == ["meta e"]:
         modes = ["exact", "fuzzy", "regex"]
         pos = modes.index(text.search_mode)
         new_pos = (pos + 1) % 3
         text.search_mode = modes[new_pos]
+        update_query_widget()
         update_main_widget()
-        update_footer_widget()
+
+    elif keys == ["meta i"]:
+        text.case_sensitive = not text.case_sensitive
+        update_query_widget()
+        update_main_widget()
+
     elif keys in (["left"], ["meta h"], ["shift tab"]):
         if frame_widget.focus_position == 0 and keys == ["left"]:
             return keys
@@ -209,6 +218,7 @@ def input_filter(keys, raw):
             new_pos = len(main_widget.contents) - 1
         main_widget.focus_position = new_pos
         main_widget.focus.focus_position = 0
+
     elif keys in (["right"], ["meta l"], ["tab"]):
         if frame_widget.focus_position == 0 and keys == ["right"]:
             return keys
@@ -218,6 +228,7 @@ def input_filter(keys, raw):
             new_pos = 1
         main_widget.focus_position = new_pos
         main_widget.focus.focus_position = 0
+
     elif keys in (["down"], ["meta j"]):
         if frame_widget.focus_position == 0 or main_widget.focus_position > 0:
             frame_widget.focus_position = 1
@@ -228,6 +239,7 @@ def input_filter(keys, raw):
             if new_pos >= len(main_widget.focus.contents):
                 new_pos = 1
             main_widget.focus.focus_position = new_pos
+
     elif keys in (["up"], ["meta k"]):
         if frame_widget.focus_position == 0 or main_widget.focus_position > 0:
             frame_widget.focus_position = 1
@@ -239,6 +251,7 @@ def input_filter(keys, raw):
             if new_pos == 0:
                 new_pos = len(main_widget.focus.contents) - 1
             main_widget.focus.focus_position = new_pos
+
     elif len(keys) == 1 and keys[0] in (f"meta {i}" for i in range(1, 10)):
         new_pos = int(keys[0][-1])
         frame_widget.focus_position = 1
@@ -248,11 +261,16 @@ def input_filter(keys, raw):
             pass
         else:
             return [" "]
+
     elif keys == [" "]:
         if (frame_widget.focus_position == 1 and
                 main_widget.focus_position != 0):
             return keys + ["right"]
+        elif (frame_widget.focus_position == 1 and
+              main_widget.focus_position == 0):
+            return keys + ["down"]
         return keys
+
     else:
         frame_widget.set_focus(0)
         return keys
@@ -260,7 +278,7 @@ def input_filter(keys, raw):
 
 loop = urwid.MainLoop(
     frame_widget := urwid.Pile([
-        ('pack', query_widget := urwid.Edit("exact> ")),
+        ('pack', query_widget := urwid.Edit("")),
         urwid.Filler(
             main_widget := urwid.Columns([]),
             valign="top",
@@ -271,6 +289,17 @@ loop = urwid.MainLoop(
 )
 
 
+def update_query_widget():
+    caption = [text.search_mode]
+    if not text.case_sensitive:
+        caption.append(" (case-ins)")
+    caption.append("> ")
+    query_widget.set_caption("".join(caption))
+
+
+update_query_widget()
+
+
 def on_query_change(edit, new_query):
     text.query_string = new_query
     update_main_widget()
@@ -279,6 +308,64 @@ def on_query_change(edit, new_query):
 urwid.connect_signal(query_widget, 'change', on_query_change)
 spinner = "/"
 output = ""
+
+
+@contextlib.contextmanager
+def replace(container, index, default, *options):
+    try:
+        widget, _ = container.contents[index]
+    except IndexError:
+        widget = default()
+
+    yield widget
+
+    try:
+        container.contents[index] = (widget, container.options(*options))
+    except IndexError:
+        container.contents.append((widget, container.options(*options)))
+
+
+def on_row_checkbox(checkbox, new_state):
+    i = checkbox.user_data
+    if new_state:
+        text.selected_lines.add(i)
+    else:
+        try:
+            text.selected_lines.remove(i)
+        except KeyError:
+            pass
+
+
+def on_column_checkbox(checkbox, new_state):
+    i = int(checkbox.get_label()) - 1
+    if new_state:
+        text.selected_columns.add(i)
+    else:
+        try:
+            text.selected_columns.remove(i)
+        except KeyError:
+            pass
+
+
+def get_widths():
+    try:
+        screen_width = loop.screen_size[0]
+    except Exception:
+        return None, None
+
+    widths = [end - start + 3 for start, end in text.columns]
+
+    text_width = sum(widths)
+    if text_width > screen_width - 4:
+        padding = 0
+        widths = [int(w * ((screen_width - 4) / text_width)) for w in widths]
+    else:
+        padding = screen_width - text_width - 4
+
+    if thread_exited:
+        with open('log.txt', 'a') as f:
+            f.write(f"{widths} {padding}, {screen_width}\n")
+    return widths, padding
 
 
 def update_main_widget():
@@ -349,64 +436,6 @@ def update_main_widget():
             pass
 
 
-@contextlib.contextmanager
-def replace(container, index, default, *options):
-    try:
-        widget, _ = container.contents[index]
-    except IndexError:
-        widget = default()
-
-    yield widget
-
-    try:
-        container.contents[index] = (widget, container.options(*options))
-    except IndexError:
-        container.contents.append((widget, container.options(*options)))
-
-
-def on_row_checkbox(checkbox, new_state):
-    i = checkbox.user_data
-    if new_state:
-        text.selected_lines.add(i)
-    else:
-        try:
-            text.selected_lines.remove(i)
-        except KeyError:
-            pass
-
-
-def on_column_checkbox(checkbox, new_state):
-    i = int(checkbox.get_label()) - 1
-    if new_state:
-        text.selected_columns.add(i)
-    else:
-        try:
-            text.selected_columns.remove(i)
-        except KeyError:
-            pass
-
-
-def get_widths():
-    try:
-        screen_width = loop.screen_size[0]
-    except Exception:
-        return None, None
-
-    widths = [end - start + 3 for start, end in text.columns]
-
-    text_width = sum(widths)
-    if text_width > screen_width - 4:
-        padding = 0
-        widths = [int(w * ((screen_width - 4) / text_width)) for w in widths]
-    else:
-        padding = screen_width - text_width - 4
-
-    if thread_exited:
-        with open('log.txt', 'a') as f:
-            f.write(f"{widths} {padding}, {screen_width}\n")
-    return widths, padding
-
-
 update_main_widget()
 
 
@@ -423,31 +452,37 @@ def update_footer_widget(_=None, user_data=None):
         except NameError:
             pass
 
+    c = itertools.count()
     with replace(footer_widget,
-                 0,
+                 next(c),
                  lambda: urwid.Text(""),
                  'given', 2) as widget:
         widget.set_text(spinner)
 
     with replace(footer_widget,
-                 1,
+                 next(c),
                  lambda: urwid.Text("")) as widget:
-        widget.set_text(f"Search mode: {text.search_mode} (Alt-E)")
+        widget.set_text("Alt-E: Change search mode")
 
     with replace(footer_widget,
-                 2,
+                 next(c),
                  lambda: urwid.Text("")) as widget:
-        widget.set_text("alt-123456789 to select numbered column")
+        widget.set_text("Alt-I: Change case sensitivity")
 
     with replace(footer_widget,
-                 3,
+                 next(c),
                  lambda: urwid.Text("")) as widget:
-        widget.set_text("←↓↑→ / alt-jjkl / (shift) tab to focus rows/columns")
+        widget.set_text("alt-123456789: select numbered column")
 
     with replace(footer_widget,
-                 4,
+                 next(c),
                  lambda: urwid.Text("")) as widget:
-        widget.set_text("space to select row/column")
+        widget.set_text("←↓↑→ / alt-hjkl / (shift) tab: focus rows/columns")
+
+    with replace(footer_widget,
+                 next(c),
+                 lambda: urwid.Text("")) as widget:
+        widget.set_text("space: select row/column")
 
 
 update_footer_widget()
@@ -516,6 +551,7 @@ if __name__ == "__main__":
 # - [x] Find a way to align columns to the left
 # - [x] Handle all keyboard shortcuts
 # - [x] Ask follow-up command at the end
-# - [ ] Add case-insensitive trigger
-# - [ ] Command line options (-i etc)
+# - [x] Add case-insensitive trigger
+# - [x] Command line options (-i etc)
+# - [ ] argparse
 # - [ ] Decorate
