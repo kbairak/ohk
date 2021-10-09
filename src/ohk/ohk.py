@@ -19,16 +19,18 @@ def find_spaces(line):
 
 
 class Text:
-    def __init__(self):
+    def __init__(self, text="", search_mode="exact", case_sensitive=True):
         self.lines = [""]
         self.spaces = set()
         self.columns = []
-        self.search_mode = "exact"
-        self.case_sensitive = True
+        self.search_mode = search_mode
+        self.case_sensitive = case_sensitive
         self.query_string = ""
         self.matching_lines = []
         self.selected_lines = set()
         self.selected_columns = set()
+
+        self.feed(text)
 
     def feed(self, text):
         for c in text:
@@ -178,7 +180,7 @@ class MyThread(threading.Thread):
 
 
 def input_filter(keys, raw):
-    global output
+    global output, text
     if keys == ["enter"]:
         output = text.result
         raise urwid.ExitMainLoop()
@@ -276,8 +278,14 @@ def input_filter(keys, raw):
             return keys + ["down"]
         return keys
 
+    elif keys == ["meta r"]:
+        text = Text(text.result, text.search_mode, text.case_sensitive)
+        query_widget.edit_text = ""
+        update_query_widget()
+        update_main_widget()
+
     else:
-        frame_widget.set_focus(0)
+        frame_widget.focus_position = 0
         return keys
 
 
@@ -381,7 +389,7 @@ def update_main_widget():
                 lambda: urwid.CheckBox("", on_state_change=on_row_checkbox),
             ) as checkbox_widget:
                 checkbox_widget.user_data = j
-                checkbox_widget.set_state(j in text.selected_lines)
+                checkbox_widget.state = j in text.selected_lines
         del first_column.contents[len(cells) + 1:]
 
     widths, padding = get_widths()
@@ -484,6 +492,11 @@ def update_footer_widget(_=None, user_data=None):
                  lambda: urwid.Text("")) as widget:
         widget.set_text("Alt-a/c: select all/none rows/columns")
 
+    with replace(footer_widget,
+                 next(c),
+                 lambda: urwid.Text("")) as widget:
+        widget.set_text("Alt-R: Rerun ohk with currently selected output")
+
 
 update_footer_widget()
 
@@ -578,9 +591,9 @@ if __name__ == "__main__":
 # - [x] Command line options (-i etc)
 # - [x] argparse
 # - [x] Shortcuts for select all/none rows/columns
+# - [x] Incrementally run ohk again (for compex searches etc)
 # - [ ] Decorate
 # - [ ] When asking for following command, offer to open ohk again to its
 #       output
-# - [ ] Incrementally run ohk again (for compex searches etc)
 # - [ ] Help popup
 # - [ ] Organize code better
