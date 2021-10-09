@@ -405,17 +405,6 @@ def on_row_checkbox(checkbox, new_state):
             pass
 
 
-def on_column_checkbox(checkbox, new_state):
-    i = int(checkbox.get_label()) - 1
-    if new_state:
-        text.selected_columns.add(i)
-    else:
-        try:
-            text.selected_columns.remove(i)
-        except KeyError:
-            pass
-
-
 def get_widths():
     try:
         screen_width = loop.screen_size[0]
@@ -432,6 +421,21 @@ def get_widths():
         padding = screen_width - text_width - 4
 
     return widths, padding
+
+
+class MouseSelectPile(urwid.Pile):
+    def __init__(self, *args, column_index=None, **kwargs):
+        self.column_index = column_index
+        super().__init__(*args, **kwargs)
+
+    def mouse_event(self, size, event, button, col, row, focus):
+        if event != "mouse release":
+            return super().mouse_event(size, event, button, col, row, focus)
+        if self.column_index in text.selected_columns:
+            text.selected_columns.remove(self.column_index)
+        else:
+            text.selected_columns.add(self.column_index)
+        update_main_widget()
 
 
 def update_main_widget():
@@ -460,7 +464,7 @@ def update_main_widget():
             options = ()
         with replace(main_widget,
                      j + 1,
-                     lambda: urwid.Pile([]),
+                     lambda: MouseSelectPile([], column_index=j),
                      *options) as pile:
             try:
                 loop.screen_size[0]
@@ -471,8 +475,7 @@ def update_main_widget():
             with replace(
                 pile,
                 0,
-                lambda: urwid.CheckBox(str(j + 1),
-                                       on_state_change=on_column_checkbox),
+                lambda: urwid.CheckBox(str(j + 1)),
                 *options
             ) as checkbox_widget:
                 checkbox_widget.set_state(j in text.selected_columns,
@@ -627,6 +630,7 @@ if __name__ == "__main__":
 # - [x] Shortcuts for select all/none rows/columns
 # - [x] Incrementally run ohk again (for compex searches etc)
 # - [x] Help popup
+# - [x] Select columns with mouse
 # - [ ] Decorate
 # - [ ] When asking for following command, offer to open ohk again to its
 #       output
