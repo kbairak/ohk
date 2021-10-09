@@ -13,15 +13,6 @@ import urwid
 
 ENCODING = "utf8"
 
-keyboard_input = sys.stdin.fileno()
-pipe_input = os.dup(keyboard_input)
-os.dup2(os.open("/dev/tty", os.O_RDONLY), keyboard_input)
-
-old_stdout_fileno = sys.stdout.fileno()
-pipe_output = os.dup(old_stdout_fileno)
-tty_output = os.open("/dev/tty", os.O_WRONLY)
-os.dup2(tty_output, old_stdout_fileno)
-
 
 def find_spaces(line):
     return {i for i, c in enumerate(line) if c.isspace()}
@@ -262,6 +253,20 @@ def input_filter(keys, raw):
         else:
             return [" "]
 
+    elif keys == ["meta a"]:
+        if len(text.selected_lines) == len(text.lines):
+            text.selected_lines.clear()
+        else:
+            text.selected_lines |= set(range(len(text.lines)))
+        update_main_widget()
+
+    elif keys == ["meta c"]:
+        if len(text.selected_columns) == len(text.columns):
+            text.selected_columns.clear()
+        else:
+            text.selected_columns |= set(range(len(text.columns)))
+        update_main_widget()
+
     elif keys == [" "]:
         if (frame_widget.focus_position == 1 and
                 main_widget.focus_position != 0):
@@ -456,27 +461,28 @@ def update_footer_widget(_=None, user_data=None):
     with replace(footer_widget,
                  next(c),
                  lambda: urwid.Text("")) as widget:
-        widget.set_text("Alt-E: Change search mode")
+        widget.set_text("Alt-E: Change search mode, "
+                        "Alt-I: Change case sensitivity")
 
     with replace(footer_widget,
                  next(c),
                  lambda: urwid.Text("")) as widget:
-        widget.set_text("Alt-I: Change case sensitivity")
-
-    with replace(footer_widget,
-                 next(c),
-                 lambda: urwid.Text("")) as widget:
-        widget.set_text("alt-123456789: select numbered column")
-
-    with replace(footer_widget,
-                 next(c),
-                 lambda: urwid.Text("")) as widget:
-        widget.set_text("←↓↑→ / alt-hjkl / (shift) tab: focus rows/columns")
+        widget.set_text("←↓↑→ / Alt-hjkl / (shift) tab: focus rows/columns")
 
     with replace(footer_widget,
                  next(c),
                  lambda: urwid.Text("")) as widget:
         widget.set_text("space: select row/column")
+
+    with replace(footer_widget,
+                 next(c),
+                 lambda: urwid.Text("")) as widget:
+        widget.set_text("Alt-123456789: select numbered column")
+
+    with replace(footer_widget,
+                 next(c),
+                 lambda: urwid.Text("")) as widget:
+        widget.set_text("Alt-a/c: select all/none rows/columns")
 
 
 update_footer_widget()
@@ -487,8 +493,8 @@ def pipe_callback(chunk):
     update_main_widget()
 
 
-def read_command(msg, in_fd):
-    os.write(tty_output, msg.encode(ENCODING))
+def read_command(msg, in_fd, out_fd):
+    os.write(out_fd, msg.encode(ENCODING))
     command = []
     while True:
         c = os.read(in_fd, 1).decode(ENCODING)
@@ -505,7 +511,14 @@ parser.add_argument("-i", "--case-insensitive", action="store_true")
 
 
 def cmd():
-    global pipe_input
+    keyboard_input = sys.stdin.fileno()
+    pipe_input = os.dup(keyboard_input)
+    os.dup2(os.open("/dev/tty", os.O_RDONLY), keyboard_input)
+
+    old_stdout_fileno = sys.stdout.fileno()
+    pipe_output = os.dup(old_stdout_fileno)
+    tty_output = os.open("/dev/tty", os.O_WRONLY)
+    os.dup2(tty_output, old_stdout_fileno)
 
     args = parser.parse_args()
     if args.fuzzy:
@@ -517,7 +530,7 @@ def cmd():
     update_query_widget()
 
     if os.isatty(pipe_input):
-        command = read_command("Enter command: ", pipe_input)
+        command = read_command("Enter command: ", pipe_input, tty_output)
         process = subprocess.Popen(shlex.split(command),
                                    stdout=subprocess.PIPE,
                                    text=True,
@@ -534,16 +547,14 @@ def cmd():
         command = read_command(
             "Pipe output to (use xargs to pass as arguments): ",
             keyboard_input,
+            tty_output,
         )
-        process = subprocess.Popen(
-            shlex.split(command),
-            stdin=subprocess.PIPE,
-            stdout=tty_output,
-            stderr=tty_output,
-            text=True,
-            encoding=ENCODING,
-            shell=True,
-        )
+        process = subprocess.Popen(shlex.split(command),
+                                   stdin=subprocess.PIPE,
+                                   stdout=tty_output,
+                                   stderr=tty_output,
+                                   text=True,
+                                   encoding=ENCODING)
         process.stdin.write(output)
         process.stdin.flush()
         process.stdin.close()
@@ -566,6 +577,10 @@ if __name__ == "__main__":
 # - [x] Add case-insensitive trigger
 # - [x] Command line options (-i etc)
 # - [x] argparse
+# - [x] Shortcuts for select all/none rows/columns
 # - [ ] Decorate
-# - [ ] When asking for following command, offer to open ohk again
-# - [ ] Shortcuts for select all/none rows/columns
+# - [ ] When asking for following command, offer to open ohk again to its
+#       output
+# - [ ] Incrementally run ohk again (for compex searches etc)
+# - [ ] Help popup
+# - [ ] Organize code better
