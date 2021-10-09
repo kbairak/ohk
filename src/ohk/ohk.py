@@ -10,6 +10,15 @@ import urwid
 
 ENCODING = "utf8"
 
+keyboard_input = sys.stdin.fileno()
+pipe_input = os.dup(keyboard_input)
+os.dup2(os.open("/dev/tty", os.O_RDONLY), keyboard_input)
+
+old_stdout_fileno = sys.stdout.fileno()
+pipe_output = os.dup(old_stdout_fileno)
+tty_output = os.open("/dev/tty", os.O_WRONLY)
+os.dup2(tty_output, old_stdout_fileno)
+
 
 def find_spaces(line):
     return {i for i, c in enumerate(line) if c.isspace()}
@@ -18,47 +27,25 @@ def find_spaces(line):
 class Text:
     def __init__(self, text=""):
         self.lines = [""]
-        self.max_line_length = 0
-        self.cells = [[]]
         self.spaces = set()
         self.columns = []
         self.search_mode = "exact"
         self.case_sensitive = True
+        self.query_string = ""
         self.matching_lines = []
         self.selected_lines = set()
         self.selected_columns = set()
-        self.query_string = ""
+
         self.feed(text)
 
     def feed(self, text):
-        try:
-            _, last_position = self.cells[-1][-1]
-        except IndexError:
-            last_position = 0
-
         for c in text:
             if c == "\n":
                 if self.lines[-1].strip():
-                    self.max_line_length = max((self.max_line_length,
-                                                len(self.lines[-1])))
-                self._adjust_columns()
+                    self._adjust_columns()
                 self.lines.append("")
-                self.cells.append([])
-                last_position = 0
-            elif c.isspace():
-                self.lines[-1] += c
-                last_position += 1
             else:
                 self.lines[-1] += c
-                try:
-                    start, end = self.cells[-1][-1]
-                except IndexError:
-                    end = None
-                if end == last_position:
-                    self.cells[-1][-1][1] += 1
-                else:
-                    self.cells[-1].append([last_position, last_position + 1])
-                last_position += 1
 
     def _adjust_columns(self):
         lines = [line for line in self.lines if line.strip()]
@@ -70,66 +57,40 @@ class Text:
             self.spaces &= find_spaces(lines[-1])
 
         self.columns = []
-        for i in range(self.max_line_length):
-            if i not in self.spaces:
-                try:
-                    _, end = self.columns[-1]
-                except IndexError:
-                    end = None
-                if end == i:
-                    self.columns[-1][1] += 1
-                else:
-                    self.columns.append([i, i + 1])
-
-    @property
-    def extended_columns(self):
-        if len(self.columns) == 0:
-            return []
-        elif len(self.columns) == 1:
-            return [[0, None]]
-        else:
-            _, end = self.columns[0]
-            result = [[0, end]]
-            for i, column in enumerate(self.columns[1:], 1):
-                try:
-                    end, _ = self.columns[i + 1]
-                except IndexError:
-                    end = None
-                start, _ = column
-                result.append([start, end])
-            result[-1][1] = None
-            return result
-
-    @property
-    def extended_cells(self):
-        return [[line[start:end] for start, end in self.extended_columns]
-                for line in self.lines]
+        # For all non-space positions
+        for pos in sorted(set(range(max((len(line) for line in lines)))) -
+                          self.spaces):
+            try:
+                _, end = self.columns[-1]
+            except IndexError:
+                end = None
+            if end == pos:
+                self.columns[-1][1] += 1
+            else:
+                self.columns.append([pos, pos + 1])
 
     def _query(self):
         query_string = self.query_string
         if not self.case_sensitive:
             query_string = query_string.lower()
+
         if self.search_mode == "exact":
-            if self.case_sensitive:
-                self.matching_lines = [i
-                                       for i, line in enumerate(self.lines)
-                                       if query_string in line]
-            else:
-                self.matching_lines = [i
-                                       for i, line in enumerate(self.lines)
-                                       if query_string in line.lower()]
+            self.matching_lines = [
+                i
+                for i, line in enumerate(self.lines)
+                if query_string in (line
+                                    if self.case_sensitive
+                                    else line.lower())
+            ]
+
         elif self.search_mode == "fuzzy":
             self.matching_lines = []
-            for i, original_line in enumerate(self.lines):
-                if self.case_sensitive:
-                    line = original_line
-                else:
-                    line = original_line.lower()
+            for i, line in enumerate(self.lines):
+                if not self.case_sensitive:
+                    line = line.lower()
                 found = True
                 start = 0
                 for c in query_string:
-                    if not self.case_sensitive:
-                        c = c.lower()
                     try:
                         pos = line.index(c, start)
                     except ValueError:
@@ -139,41 +100,41 @@ class Text:
                         start = pos + 1
                 if found:
                     self.matching_lines.append(i)
+
         elif self.search_mode == "regex":
-            if self.case_sensitive:
-                self.matching_lines = [i
-                                       for i, line in enumerate(self.lines)
-                                       if re.search(query_string, line)]
-            else:
-                self.matching_lines = [
-                    i
-                    for i, line in enumerate(self.lines)
-                    if re.search(query_string, line.lower())
-                ]
+            self.matching_lines = [
+                i
+                for i, line in enumerate(self.lines)
+                if re.search(query_string,
+                             line if self.case_sensitive else line.lower())
+            ]
 
         else:
             raise ValueError(f"mode '{self.search_mode}' is unknown")
 
-    def select_line(self, i, value=None):
-        if value is None:
-            if i in self.selected_lines:
-                self.selected_lines.remove(i)
-            else:
-                self.selected_lines.add(i)
-        elif value:
-            self.selected_lines.add(i)
+    @property
+    def extended_columns(self):
+        if len(self.columns) == 0:
+            return []
+        elif len(self.columns) == 1:
+            return [[0, None]]
         else:
-            try:
-                self.selected_lines.remove(i)
-            except KeyError:
-                pass
+            result = [[column[0], self.columns[i + 1][0]]
+                      for i, column in enumerate(self.columns[:-1])]
+            result[0][0] = 0
+            result.append([self.columns[-1][0], None])
+            return result
+
+    @property
+    def extended_cells(self):
+        return [[line[start:end] for start, end in self.extended_columns]
+                for line in self.lines]
 
     @property
     def filtered_rows(self):
         self._query()
-        extended_cells = self.extended_cells
         return [(i, row)
-                for i, row in enumerate(extended_cells)
+                for i, row in enumerate(self.extended_cells)
                 if i in self.matching_lines and any(row)]
 
     @property
@@ -190,16 +151,12 @@ class Text:
                     if i in self.matching_lines]
 
         if self.selected_columns:
-            return [[cell
+            rows = [[cell
                      for i, cell in enumerate(row)
                      if i in self.selected_columns]
                     for row in rows]
-        else:
-            return rows
 
-    @property
-    def result_text(self):
-        return "\n".join(("".join(row) for row in self.result))
+        return "\n".join(("".join(row) for row in rows)) + "\n"
 
 
 text = Text()
@@ -231,7 +188,7 @@ class MyThread(threading.Thread):
 def input_filter(keys, raw):
     global output
     if keys == ["enter"]:
-        output = text.result_text
+        output = text.result
         raise urwid.ExitMainLoop()
     elif keys == ["esc"]:
         output = ""
@@ -304,11 +261,11 @@ def input_filter(keys, raw):
 loop = urwid.MainLoop(
     frame_widget := urwid.Pile([
         ('pack', query_widget := urwid.Edit("exact> ")),
-        body_widget := urwid.Filler(
+        urwid.Filler(
             main_widget := urwid.Columns([]),
             valign="top",
         ),
-        ('pack', footer_widget := urwid.Text("", wrap="ellipsis")),
+        ('pack', footer_widget := urwid.Columns([], dividechars=2)),
     ]),
     input_filter=input_filter,
 )
@@ -466,11 +423,31 @@ def update_footer_widget(_=None, user_data=None):
         except NameError:
             pass
 
-    footer_widget.set_text(f"{spinner} "
-                           f"Search mode: {text.search_mode} (Alt-E)  "
-                           "alt-123456789 to select numbered column  "
-                           "←↓↑→/alt-jjkl/(shift) tab to focus rows/columns  "
-                           "space to select column")
+    with replace(footer_widget,
+                 0,
+                 lambda: urwid.Text(""),
+                 'given', 2) as widget:
+        widget.set_text(spinner)
+
+    with replace(footer_widget,
+                 1,
+                 lambda: urwid.Text("")) as widget:
+        widget.set_text(f"Search mode: {text.search_mode} (Alt-E)")
+
+    with replace(footer_widget,
+                 2,
+                 lambda: urwid.Text("")) as widget:
+        widget.set_text("alt-123456789 to select numbered column")
+
+    with replace(footer_widget,
+                 3,
+                 lambda: urwid.Text("")) as widget:
+        widget.set_text("←↓↑→ / alt-jjkl / (shift) tab to focus rows/columns")
+
+    with replace(footer_widget,
+                 4,
+                 lambda: urwid.Text("")) as widget:
+        widget.set_text("space to select row/column")
 
 
 update_footer_widget()
@@ -481,25 +458,22 @@ def pipe_callback(chunk):
     update_main_widget()
 
 
+def read_command(msg, in_fd):
+    os.write(tty_output, msg.encode(ENCODING))
+    command = []
+    while True:
+        c = os.read(in_fd, 1).decode(ENCODING)
+        if c == "\n":
+            break
+        command.append(c)
+    return "".join(command)
+
+
 def cmd():
-    keyboard_input = sys.stdin.fileno()
-    pipe_input = os.dup(keyboard_input)
-    os.dup2(os.open("/dev/tty", os.O_RDONLY), keyboard_input)
-
-    old_stdout_fileno = sys.stdout.fileno()
-    pipe_output = os.dup(old_stdout_fileno)
-    tty_output = os.open("/dev/tty", os.O_WRONLY)
-    os.dup2(tty_output, old_stdout_fileno)
-
+    global pipe_input
     if os.isatty(pipe_input):
         os.write(tty_output, "Enter command: ".encode(ENCODING))
-        command = []
-        while True:
-            c = os.read(pipe_input, 1).decode(ENCODING)
-            if c == "\n":
-                break
-            command.append(c)
-        command = "".join(command)
+        command = read_command("Enter command: ", pipe_input)
         process = subprocess.Popen(shlex.split(command),
                                    stdout=subprocess.PIPE,
                                    text=True,
@@ -512,8 +486,24 @@ def cmd():
         loop.run()
     finally:
         os.close(pipe)
-    with open(pipe_output, 'w') as f:
-        f.write(output + "\n")
+    if os.isatty(pipe_output):
+        command = read_command("Pipe output to: ", keyboard_input)
+        process = subprocess.Popen(
+            shlex.split(command),
+            stdin=subprocess.PIPE,
+            stdout=tty_output,
+            stderr=tty_output,
+            text=True,
+            encoding=ENCODING,
+            shell=True,
+        )
+        process.stdin.write(output)
+        process.stdin.flush()
+        process.stdin.close()
+        process.wait()
+    else:
+        with open(pipe_output, 'w') as f:
+            f.write(output + "\n")
 
 
 if __name__ == "__main__":
@@ -525,5 +515,7 @@ if __name__ == "__main__":
 # - [x] Spinner
 # - [x] Find a way to align columns to the left
 # - [x] Handle all keyboard shortcuts
-# - [ ] Popup at the end
+# - [x] Ask follow-up command at the end
+# - [ ] Add case-insensitive trigger
+# - [ ] Command line options (-i etc)
 # - [ ] Decorate
