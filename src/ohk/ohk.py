@@ -669,28 +669,3 @@ def cmd():
 
 if __name__ == "__main__":
     cmd()
-
-
-# TODOs:
-# - [x] Take checkboxes into account
-# - [x] Spinner
-# - [x] Find a way to align columns to the left
-# - [x] Handle all keyboard shortcuts
-# - [x] Ask follow-up command at the end
-# - [x] Add case-insensitive trigger
-# - [x] Command line options (-i etc)
-# - [x] argparse
-# - [x] Shortcuts for select all/none rows/columns
-# - [x] Incrementally run ohk again (for compex searches etc)
-# - [x] Help popup
-# - [x] Select columns with mouse
-# - [x] Speed things up
-# - [x] Support pipes in output command
-# - [ ] Decorate
-# - [ ] When asking for following command, offer to open ohk again to its
-#       output
-# - [ ] Organize code better
-# - [ ] Set output as environment variable on the outer shell
-# - [ ] Use Ctrl- shortcuts
-# - [ ] Scroll
-# - [ ] Search for column title
