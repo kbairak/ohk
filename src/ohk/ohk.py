@@ -106,6 +106,18 @@ class Text:
         else:
             raise ValueError(f"mode '{self.search_mode}' is unknown")
 
+    def toggle_column(self, column_index):
+        if column_index in self.selected_columns:
+            self.selected_columns.remove(column_index)
+        else:
+            self.selected_columns.add(column_index)
+
+    def toggle_line(self, line_index):
+        if line_index in self.selected_lines:
+            self.selected_lines.remove(line_index)
+        else:
+            self.selected_lines.add(line_index)
+
     @property
     def extended_columns(self):
         if len(self.columns) == 0:
@@ -170,7 +182,7 @@ class MyThread(threading.Thread):
     def run(self, *args, **kwargs):
         with open(self.stdin_fileno) as f:
             while True:
-                chunk = f.read(1)
+                chunk = f.read(10)
                 if not chunk:
                     os.write(self.pipe, "\n".encode(ENCODING))
                     global thread_exited
@@ -258,6 +270,7 @@ def input_filter(keys, raw):
         except IndexError:
             pass
         else:
+            text.toggle_column(new_pos - 1)
             return [" "]
 
     elif keys == ["meta a"]:
@@ -277,9 +290,11 @@ def input_filter(keys, raw):
     elif keys == [" "]:
         if (frame_widget.focus_position == 1 and
                 main_widget.focus_position != 0):
+            text.toggle_column(main_widget.focus_position - 1)
             return keys + ["right"]
         elif (frame_widget.focus_position == 1 and
               main_widget.focus_position == 0):
+            text.toggle_line(main_widget.focus.focus_position - 1)
             return keys + ["down"]
         return keys
 
@@ -336,6 +351,8 @@ def show_help():
                     "    Select row/column",
                     "- Alt-123456789: ",
                     "    Select numbered column",
+                    "- Left click:",
+                    "    Select column",
                     "- Alt-A/C: ",
                     "    Select all/none rows/columns",
                     "- Alt-R: ",
@@ -595,7 +612,13 @@ def cmd():
         os.close(pipe)
     if os.isatty(pipe_output):
         command = read_command(
-            "Pipe output to (use xargs to pass as arguments): ",
+            "\n".join((
+                "Tips:",
+                "  - use 'xargs' to pass output as argument",
+                "  - use 'cat' to print to terminal",
+                "  - use 'ohk' to re-run ohk on the results",
+                "Pipe output to: ",
+            )),
             keyboard_input,
             tty_output,
         )
@@ -631,8 +654,10 @@ if __name__ == "__main__":
 # - [x] Incrementally run ohk again (for compex searches etc)
 # - [x] Help popup
 # - [x] Select columns with mouse
+# - [x] Speed things up
 # - [ ] Decorate
 # - [ ] When asking for following command, offer to open ohk again to its
 #       output
 # - [ ] Organize code better
-# - [ ] Select column with mouse
+# - [ ] Set output as environment variable on the outer shell
+# - [ ] Use Ctrl- shortcuts
