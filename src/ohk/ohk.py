@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import io
 import itertools
 import os
 import re
@@ -9,7 +10,6 @@ import sys
 import threading
 
 import urwid
-
 
 ENCODING = "utf8"
 
@@ -174,10 +174,10 @@ thread_exited = False
 class MyThread(threading.Thread):
     daemon = True
 
-    def __init__(self, stdin_fileno, pipe):
+    def __init__(self, stdin_fileno, pipe, *args, **kwargs):
         self.stdin_fileno = stdin_fileno
         self.pipe = pipe
-        super().__init__()
+        super().__init__(*args, **kwargs)
 
     def run(self, *args, **kwargs):
         with open(self.stdin_fileno) as f:
@@ -577,6 +577,16 @@ parser.add_argument("-r", "--regex", action="store_true")
 parser.add_argument("-i", "--case-insensitive", action="store_true")
 
 
+def split(iterable, separator):
+    result = [[]]
+    for item in iterable:
+        if item == separator:
+            result.append([])
+        else:
+            result[-1].append(item)
+    return result
+
+
 def cmd():
     keyboard_input = sys.stdin.fileno()
     pipe_input = os.dup(keyboard_input)
@@ -614,22 +624,42 @@ def cmd():
         command = read_command(
             "\n".join((
                 "Tips:",
+                "  - use 'cat' (or leave empty) to print to terminal",
                 "  - use 'xargs' to pass output as argument",
-                "  - use 'cat' to print to terminal",
+                "  - use '{}' placeholder to pass output as argument",
                 "  - use 'ohk' to re-run ohk on the results",
+                "  - append ' | ohk' to run ohk on the command's output",
                 "Pipe output to: ",
             )),
             keyboard_input,
             tty_output,
         )
-        process = subprocess.Popen(shlex.split(command),
-                                   stdin=subprocess.PIPE,
-                                   stdout=tty_output,
-                                   stderr=tty_output,
-                                   text=True,
-                                   encoding=ENCODING)
-        process.stdin.write(output)
-        process.stdin.flush()
+        try:
+            pos = command.index("{}")
+        except ValueError:
+            pass
+        else:
+            command = command[:pos] + output + command[pos + 2:]
+        command = shlex.split(command)
+        if not command:
+            command = ["cat"]
+        commands = split(command, "|")
+
+        # Make a chain of processes
+        stdin = io.BytesIO(output.encode(ENCODING))
+        for command in commands[:-1]:
+            process = subprocess.Popen(command,
+                                       stdin=subprocess.PIPE,
+                                       stdout=subprocess.PIPE)
+            while chunk := stdin.read(10):
+                process.stdin.write(chunk)
+            process.stdin.close()
+            stdin = process.stdout
+        # Last process should have the default output
+        process = subprocess.Popen(commands[-1],
+                                   stdin=subprocess.PIPE)
+        while chunk := stdin.read(10):
+            process.stdin.write(chunk)
         process.stdin.close()
         process.wait()
     else:
@@ -655,9 +685,11 @@ if __name__ == "__main__":
 # - [x] Help popup
 # - [x] Select columns with mouse
 # - [x] Speed things up
+# - [x] Support pipes in output command
 # - [ ] Decorate
 # - [ ] When asking for following command, offer to open ohk again to its
 #       output
 # - [ ] Organize code better
 # - [ ] Set output as environment variable on the outer shell
 # - [ ] Use Ctrl- shortcuts
+# - [ ] Scroll
