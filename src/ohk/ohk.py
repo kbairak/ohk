@@ -693,3 +693,4 @@ if __name__ == "__main__":
 # - [ ] Set output as environment variable on the outer shell
 # - [ ] Use Ctrl- shortcuts
 # - [ ] Scroll
+# - [ ] Search for column title
