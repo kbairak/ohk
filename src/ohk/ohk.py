@@ -575,6 +575,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-f", "--fuzzy", action="store_true")
 parser.add_argument("-r", "--regex", action="store_true")
 parser.add_argument("-i", "--case-insensitive", action="store_true")
+parser.add_argument("-x", action="store_true")
+parser.add_argument("-y", action="store_true")
+parser.add_argument("--setup-alias", action="store_true")
 
 
 def split(iterable, separator):
@@ -588,6 +591,34 @@ def split(iterable, separator):
 
 
 def cmd():
+    global output
+
+    args = parser.parse_args()
+
+    if args.setup_alias:
+        print("function ohk2 { "
+              "  if [ -t 0 ]; then "
+              "    if [ -t 1 ]; then "
+              "      eval $(ohk $@ -x -y); "
+              "    else "
+              "      eval $(ohk $@ -x); "
+              "    fi; "
+              "  else "
+              "    if [ -t 1 ]; then "
+              "      eval $(cat | ohk $@ -x -y); "
+              "    else "
+              "      eval $(cat | ohk $@ -x); "
+              "    fi; "
+              "  fi; "
+              "};")
+        return
+
+    if args.fuzzy:
+        text.search_mode = "fuzzy"
+    elif args.regex:
+        text.search_mode = "regex"
+    text.case_sensitive = not args.case_insensitive
+
     keyboard_input = sys.stdin.fileno()
     pipe_input = os.dup(keyboard_input)
     os.dup2(os.open("/dev/tty", os.O_RDONLY), keyboard_input)
@@ -596,13 +627,6 @@ def cmd():
     pipe_output = os.dup(old_stdout_fileno)
     tty_output = os.open("/dev/tty", os.O_WRONLY)
     os.dup2(tty_output, old_stdout_fileno)
-
-    args = parser.parse_args()
-    if args.fuzzy:
-        text.search_mode = "fuzzy"
-    elif args.regex:
-        text.search_mode = "regex"
-    text.case_sensitive = not args.case_insensitive
 
     update_query_widget()
 
@@ -624,7 +648,8 @@ def cmd():
     if not output:
         return
 
-    if os.isatty(pipe_output):
+    if os.isatty(pipe_output) or args.x and args.y:
+        os.dup2(old_stdout_fileno, tty_output)
         command = read_command(
             "\n".join((
                 "Tips:",
@@ -638,6 +663,11 @@ def cmd():
             keyboard_input,
             tty_output,
         )
+        if match := re.search(r'export (\w+)={}', command):
+            with open(pipe_output, 'w') as f:
+                output = output.replace('\'', '\\\'')
+                f.write(f"export {match.groups()[0]}='{output}'")
+            return
         try:
             pos = command.index("{}")
         except ValueError:
@@ -669,7 +699,12 @@ def cmd():
 
     else:
         with open(pipe_output, 'w') as f:
-            f.write(output + "\n")
+            if args.x:
+                f.write("echo '" +
+                        output.replace('\n', '\\n').replace("'", "\\'") +
+                        "'\n")
+            else:
+                f.write(output + "\n")
 
 
 if __name__ == "__main__":
