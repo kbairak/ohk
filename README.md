@@ -11,7 +11,7 @@
 ## Installation
 
 ```sh
-→ pip install git+https://github.com/kbairak/ohk
+→ pip install ohk
 ```
 
 or
@@ -19,7 +19,7 @@ or
 ```sh
 → git clone https://github.com/kbairak/ohk
 → cd ohk
-→ pip install .
+→ pip install -e .
 ```
 
 _Add `sudo` or `--user` to your `pip install` command depending on your setup_
@@ -92,6 +92,7 @@ optional arguments:
 
 ## TODOs
 
+- [ ] Tests
 - [ ] Use Ctrl- shortcuts
 - [ ] Set output as environment variable on the outer shell (will probably need
   the user to set an alias)
