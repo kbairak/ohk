@@ -620,6 +620,10 @@ def cmd():
         loop.run()
     finally:
         os.close(pipe)
+
+    if not output:
+        return
+
     if os.isatty(pipe_output):
         command = read_command(
             "\n".join((
@@ -662,6 +666,7 @@ def cmd():
             process.stdin.write(chunk)
         process.stdin.close()
         process.wait()
+
     else:
         with open(pipe_output, 'w') as f:
             f.write(output + "\n")

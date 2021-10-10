@@ -60,6 +60,9 @@ Tips:
 Pipe output to: sort | uniq | ohk
 ```
 
+_Note: You should not use `ohk` twice in the chain of processes because they
+will launch in parallel and both try to take over the screen and keyboard_
+
 ### Keyboard shortcuts
 
 |                               |                                          |
