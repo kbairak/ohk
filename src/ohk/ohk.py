@@ -596,23 +596,23 @@ def cmd():
     args = parser.parse_args()
 
     if args.setup_alias:
-        print("alias _ohk=$(which ohk); ",
-              "function ohk2 { ",
+        print("alias _original_ohk=$(which ohk); ",
+              "function _new_ohk { ",
               "  if [ -t 0 ]; then ",
               "    if [ -t 1 ]; then ",
-              "      eval $(_ohk $@ -x -y); ",
+              "      eval $(_original_ohk $@ -x -y); ",
               "    else ",
-              "      eval $(_ohk $@ -x); ",
+              "      eval $(_original_ohk $@ -x); ",
               "    fi; ",
               "  else ",
               "    if [ -t 1 ]; then ",
-              "      eval $(cat | _ohk $@ -x -y); ",
+              "      eval $(cat | _original_ohk $@ -x -y); ",
               "    else ",
-              "      eval $(cat | _ohk $@ -x); ",
+              "      eval $(cat | _original_ohk $@ -x); ",
               "    fi; ",
               "  fi; ",
               "}; ",
-              "alias ohk=ohk2; ")
+              "alias ohk=_new_ohk; ")
         return
 
     if args.fuzzy:
