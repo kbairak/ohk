@@ -638,12 +638,7 @@ def cmd():
             keyboard_input,
             tty_output,
         )
-        try:
-            pos = command.index("{}")
-        except ValueError:
-            pass
-        else:
-            command = command[:pos] + output + command[pos + 2:]
+        command.replace('{}', output).replace('\\{', '{').replace('\\}', '}')
         command = shlex.split(command)
         if not command:
             command = ["cat"]
