@@ -457,12 +457,21 @@ def cmd():
     update_query_widget()
 
     if os.isatty(pipe_input):
-        command = read_command("Enter command: ", pipe_input, tty_output)
-        process = subprocess.Popen(shlex.split(command),
-                                   stdout=subprocess.PIPE,
-                                   text=True,
-                                   encoding=ENCODING)
-        pipe_input = process.stdout.fileno()
+        while True:
+            command = read_command("Enter command: ", pipe_input, tty_output)
+            try:
+                process = subprocess.Popen(shlex.split(command),
+                                           stdout=subprocess.PIPE,
+                                           text=True,
+                                           encoding=ENCODING)
+            except FileNotFoundError as e:
+                os.write(tty_output,
+                         f"Command not found please try again:\n  {e}\n".
+                         encode(ENCODING))
+                continue
+            else:
+                pipe_input = process.stdout.fileno()
+                break
 
     pipe = loop.watch_pipe(pipe_callback)
     try:
