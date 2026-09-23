@@ -13,7 +13,8 @@ Flat `package main` at the repo root — no compiler-enforced package boundaries
 | `render.go` | ANSI frame string building (pure string in, string out) |
 | `term.go` | `/dev/tty` open, raw mode, alt screen (syscalls) |
 | `save.go` | session result file for `ohke`, with permission checks |
-| `main.go` | wiring: stdin, tty, loop |
+| `setup.go` | `--setup-<shell>` snippets for `ohke` integration |
+| `main.go` | wiring: args, stdin, tty, loop |
 
 ## Invariants
 

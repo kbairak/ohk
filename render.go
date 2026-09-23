@@ -49,10 +49,7 @@ func Render(s *State, w, h int) string {
 	lines = append(lines, renderStatus(s, w))
 	lines = append(lines, renderHeader(s, widths, numW))
 
-	maxRows := h - 2
-	if maxRows < 0 {
-		maxRows = 0
-	}
+	maxRows := max(h-2, 0)
 	shown := visible
 	if len(shown) > maxRows {
 		shown = shown[:maxRows]
@@ -61,19 +58,20 @@ func Render(s *State, w, h int) string {
 		lines = append(lines, renderRow(s, dn+1, orig, w, widths, numW))
 	}
 
-	frame := "\x1b[H\x1b[2J"
+	var frame strings.Builder
+	frame.WriteString("\x1b[H\x1b[2J")
 	for i, l := range lines {
 		if i > 0 {
-			frame += "\r\n"
+			frame.WriteString("\r\n")
 		}
 		if i == 0 {
-			frame += l
+			frame.WriteString(l)
 		} else {
-			frame += cropBytes(l, w)
+			frame.WriteString(cropBytes(l, w))
 		}
-		frame += "\x1b[K"
+		frame.WriteString("\x1b[K")
 	}
-	return frame
+	return frame.String()
 }
 
 func renderHeader(s *State, widths []int, numW int) string {
@@ -143,13 +141,13 @@ func renderRow(s *State, displayNum, orig, w int, widths []int, numW int) string
 func renderStatus(s *State, w int) string {
 	var text string
 	if s.Filtering {
-		text = "/" + s.FilterQuery + s.SessionQuery + "█"
+		text = fmt.Sprintf("[%s] /%s%s█", s.FilterMode, s.FilterQuery, s.SessionQuery)
 	} else {
 		modeName := "column"
 		if s.Mode == ModeRow {
 			modeName = "row"
 		}
-		text = fmt.Sprintf("[%s] filter:%q | TAB mode  / filter  ENTER output  a all  i invert  >/. commit  </, pop  q quit", modeName, s.FilterQuery)
+		text = fmt.Sprintf("[%s] filter:%q (%s) | TAB mode  / filter (TAB cycles match mode)  ENTER output  a all  i invert  >/. commit  </, pop  q quit", modeName, s.FilterQuery, s.FilterMode)
 	}
 	runes := []rune(text)
 	if w < 0 {

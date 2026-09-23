@@ -9,6 +9,50 @@ const (
 	ModeRow
 )
 
+type FilterMode int
+
+const (
+	FilterFuzzy FilterMode = iota
+	FilterInsensitive
+	FilterSensitive
+	filterModeCount
+)
+
+func (m FilterMode) String() string {
+	switch m {
+	case FilterInsensitive:
+		return "case-insensitive"
+	case FilterSensitive:
+		return "case-sensitive"
+	default:
+		return "fuzzy"
+	}
+}
+
+func matchLine(l Line, q string, mode FilterMode) bool {
+	switch mode {
+	case FilterSensitive:
+		return strings.Contains(l.Raw, q)
+	case FilterInsensitive:
+		return strings.Contains(strings.ToLower(l.Raw), strings.ToLower(q))
+	default:
+		return fuzzyMatch(strings.ToLower(l.Raw), strings.ToLower(q))
+	}
+}
+
+func fuzzyMatch(s, q string) bool {
+	if q == "" {
+		return true
+	}
+	qi := 0
+	for i := 0; i < len(s) && qi < len(q); i++ {
+		if s[i] == q[qi] {
+			qi++
+		}
+	}
+	return qi == len(q)
+}
+
 type Action int
 
 const (
@@ -26,6 +70,7 @@ type StateSnapshot struct {
 	ColHigh     int
 	RowHigh     int
 	FilterQuery string
+	FilterMode  FilterMode
 }
 
 type State struct {
@@ -39,6 +84,7 @@ type State struct {
 	Filtering    bool
 	SessionQuery string
 	FilterQuery  string
+	FilterMode   FilterMode
 	Snapshots    []StateSnapshot
 }
 
@@ -55,7 +101,7 @@ func NewState(lines []Line) *State {
 func (s *State) VisibleRows() []int {
 	out := make([]int, 0, len(s.Lines))
 	for i, l := range s.Lines {
-		if s.FilterQuery == "" || strings.Contains(l.Raw, s.FilterQuery) {
+		if s.FilterQuery == "" || matchLine(l, s.FilterQuery, s.FilterMode) {
 			out = append(out, i)
 		}
 	}
@@ -149,6 +195,7 @@ func (s *State) HandleFilterKey(k Key) {
 		s.SessionQuery = ""
 		s.FilterQuery = ""
 	case KeyTab:
+		s.FilterMode = (s.FilterMode + 1) % filterModeCount
 	default:
 	}
 }
@@ -166,7 +213,7 @@ func dropLastWord(s string) string {
 
 func (s *State) wouldLeaveVisible(q string) bool {
 	for _, l := range s.Lines {
-		if strings.Contains(l.Raw, q) {
+		if matchLine(l, q, s.FilterMode) {
 			return true
 		}
 	}
@@ -321,6 +368,7 @@ func (s *State) commit() {
 		ColHigh:     s.ColHigh,
 		RowHigh:     s.RowHigh,
 		FilterQuery: s.FilterQuery,
+		FilterMode:  s.FilterMode,
 	}
 	s.Snapshots = append(s.Snapshots, snap)
 
@@ -354,6 +402,7 @@ func (s *State) pop() {
 	s.ColHigh = snap.ColHigh
 	s.RowHigh = snap.RowHigh
 	s.FilterQuery = snap.FilterQuery
+	s.FilterMode = snap.FilterMode
 	s.Filtering = false
 	s.SessionQuery = ""
 }

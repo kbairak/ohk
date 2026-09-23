@@ -113,13 +113,14 @@ prefixes, which is also how you can tell which mode you are in:
 
 In filter mode:
 
-| Key                  | Action                                               |
-| -------------------- | ---------------------------------------------------- |
-| printable characters | append to the query                                  |
-| `BACKSPACE`          | delete the last character                            |
-| `CTRL-W`             | delete the last word                                 |
-| `ENTER`              | apply the filter (no-op if it would hide everything) |
-| `ESC`                | clear the filter and leave filter mode               |
+| Key                  | Action                                                |
+| -------------------- | ----------------------------------------------------- |
+| printable characters | append to the query                                   |
+| `TAB`                | cycle match mode: fuzzy → case-insensitive → sensitive |
+| `BACKSPACE`          | delete the last character                             |
+| `CTRL-W`             | delete the last word                                  |
+| `ENTER`              | apply the filter (no-op if it would hide everything)  |
+| `ESC`                | clear the filter and leave filter mode                |
 
 > The highlight and mode persist across `TAB` switches, so you can bounce back
 > and forth without losing your place. Columns beyond the first nine are reached
@@ -211,12 +212,19 @@ projection:
 ### Filter mode
 
 - `a-z 0-9` and other printable symbols fill the query.
+- `TAB` cycles the match mode: **fuzzy** (default) → **case-insensitive** →
+  **case-sensitive** → fuzzy. The current mode shows in the status line.
+  - *fuzzy*: the query matches as a case-insensitive subsequence (characters in
+    order, gaps allowed) — `fb` matches `Foo Bar`.
+  - *case-insensitive*: case-insensitive substring.
+  - *case-sensitive*: plain substring, case-sensitive.
 - `ENTER` applies the filter — but only if it would leave at least one row.
 - The query is **remembered between sessions**: `/foo<ENTER>` then `/bar<ENTER>`
   filters by `foobar`.
 - `ESC` clears the filter entirely.
 - Rows hidden by a filter lose their selection.
-- Exact (case-sensitive substring) matching in the PoC; other modes are deferred.
+- The match mode is a preference: it persists across filter sessions and is saved
+  in snapshots.
 
 ### Snapshots
 
@@ -260,9 +268,29 @@ echo "$name"
 `ohke` must run in the **same shell instance** that ran `ohk` (same `$$`); it
 won't work from a child script or subshell.
 
-Add the snippet for your shell to your rc file.
+### Quick setup (recommended)
 
-### zsh (`~/.zshrc`)
+Let `ohk` print the setup snippet for your shell and `eval` it from your rc file:
+
+```sh
+# ~/.zshrc
+eval "$(ohk --setup-zsh)"
+
+# ~/.bashrc
+eval "$(ohk --setup-bash)"
+
+# ~/.profile  (POSIX sh)
+eval "$(ohk --setup-sh)"
+```
+
+Keep the quotes: bash word-splits an unquoted command substitution, which breaks
+the function definitions. (zsh happens to survive without them; bash does not.)
+
+### Manual setup
+
+Or paste the definitions directly into your rc file.
+
+#### zsh (`~/.zshrc`)
 
 ```sh
 ohk() { OHK_SESSION=$$ command ohk "$@"; }
@@ -282,7 +310,7 @@ ohke() {
 }
 ```
 
-### bash (`~/.bashrc`)
+#### bash (`~/.bashrc`)
 
 ```bash
 ohk() { OHK_SESSION=$$ command ohk "$@"; }
@@ -302,7 +330,7 @@ ohke() {
 }
 ```
 
-### POSIX sh (`~/.profile`)
+#### POSIX sh (`~/.profile`)
 
 `local` is not portable, so this variant uses prefixed names instead.
 
@@ -323,27 +351,24 @@ ohke() {
 }
 ```
 
-> The repo also ships `ohk.sh` with the same functions if you prefer
-> `source ohk.sh`; the snippets above are equivalent and let you keep your rc
-> self-contained.
+> `ohk --setup-<shell>` prints these same definitions, and the repo ships
+> `ohk.sh` (the zsh/bash variant) if you prefer `source ohk.sh`.
 
 ## Limitations (PoC)
 
 - Reads all of stdin **before** showing the UI — not for infinite streams.
-- Filtering is exact-match only (case-insensitive / fuzzy / regex are deferred).
+- Filtering has no regex mode (fuzzy / case-insensitive / case-sensitive only).
 - ASCII byte offsets only; no rune/wide-character awareness.
 - No SIGWINCH handling (the size is re-read every frame, so resize mostly works).
 - Lines wider than the terminal are cropped.
 
 ## Roadmap
 
+- **Regex filter mode.** Add a fourth mode using RE2 syntax (Go's `regexp`), the
+  rest of the `TAB` cycle already being fuzzy / case-insensitive / case-sensitive.
 - **Streaming input.** Render rows as they arrive instead of waiting for EOF, and
   let `ENTER` stop the upstream command. This is the `docker ps | ohk | docker stop`
   flow taken to its logical end.
-- **Filter modes.** Cycle `TAB` through exact → case-insensitive → fuzzy → regex:
-  - _case-insensitive_: substring match ignoring case.
-  - _fuzzy_: query matches as a subsequence (characters in order, gaps allowed).
-  - _regex_: RE2 syntax (Go's regexp).
 - **Resize handling** via `SIGWINCH` instead of polling the size each frame.
 - **Rune- and wide-character aware columns** (currently byte offsets, ASCII only).
 
@@ -356,4 +381,3 @@ make build   # go build -o ohk .
 make clean   # rm -f ohk
 go test .    # unit tests for the pure logic
 ```
-

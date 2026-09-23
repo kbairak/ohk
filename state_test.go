@@ -230,6 +230,77 @@ func TestFilterCtrlW(t *testing.T) {
 	}
 }
 
+func TestFuzzyMatch(t *testing.T) {
+	cases := []struct {
+		s, q string
+		want bool
+	}{
+		{"foobar", "fb", true},
+		{"foobar", "fz", false},
+		{"foobar", "", true},
+		{"foobar", "foobar", true},
+		{"foobar", "foobarbaz", false},
+		{"abc", "bc", true},
+	}
+	for _, c := range cases {
+		if got := fuzzyMatch(c.s, c.q); got != c.want {
+			t.Errorf("fuzzyMatch(%q, %q) = %v; want %v", c.s, c.q, got, c.want)
+		}
+	}
+}
+
+func TestFilterModeDefaultIsFuzzy(t *testing.T) {
+	s := newTestState("Foo Bar\nfoo baz\nquux\n")
+	if s.FilterMode != FilterFuzzy {
+		t.Fatalf("default filter mode = %v; want fuzzy", s.FilterMode)
+	}
+	s.FilterQuery = "fb"
+	got := s.VisibleRows()
+	if len(got) != 2 || got[0] != 0 || got[1] != 1 {
+		t.Fatalf("fuzzy subsequence rows = %v; want [0 1]", got)
+	}
+}
+
+func TestFilterModeMatching(t *testing.T) {
+	s := newTestState("Foo Bar\nfoo baz\nquux\n")
+
+	s.FilterMode = FilterInsensitive
+	s.FilterQuery = "foo"
+	if got := s.VisibleRows(); len(got) != 2 {
+		t.Fatalf("case-insensitive rows = %v; want 2", got)
+	}
+
+	s.FilterMode = FilterSensitive
+	s.FilterQuery = "Foo"
+	if got := s.VisibleRows(); len(got) != 1 || got[0] != 0 {
+		t.Fatalf("case-sensitive rows = %v; want [0]", got)
+	}
+	s.FilterQuery = "FOO"
+	if got := s.VisibleRows(); len(got) != 0 {
+		t.Fatalf("case-sensitive FOO rows = %v; want none", got)
+	}
+}
+
+func TestFilterTabCyclesMode(t *testing.T) {
+	s := newTestState("a\n")
+	runeKey(s, '/')
+	if s.FilterMode != FilterFuzzy {
+		t.Fatalf("start = %v", s.FilterMode)
+	}
+	s.HandleFilterKey(Key{Kind: KeyTab})
+	if s.FilterMode != FilterInsensitive {
+		t.Fatalf("after 1 tab = %v", s.FilterMode)
+	}
+	s.HandleFilterKey(Key{Kind: KeyTab})
+	if s.FilterMode != FilterSensitive {
+		t.Fatalf("after 2 tabs = %v", s.FilterMode)
+	}
+	s.HandleFilterKey(Key{Kind: KeyTab})
+	if s.FilterMode != FilterFuzzy {
+		t.Fatalf("after 3 tabs = %v", s.FilterMode)
+	}
+}
+
 func TestFilterPrunesHiddenRowSel(t *testing.T) {
 	s := newTestState("foobar\nfoo\nbar\n")
 	press(s, KeyTab)
@@ -284,6 +355,17 @@ func TestSnapshotCommitAndPop(t *testing.T) {
 	}
 	if !s.ColSel[1] {
 		t.Fatalf("restored col sel: %v", s.ColSel)
+	}
+}
+
+func TestSnapshotRestoresFilterMode(t *testing.T) {
+	s := newTestState("a b c\nd e f\n")
+	s.FilterMode = FilterSensitive
+	runeKey(s, '>')
+	s.FilterMode = FilterFuzzy
+	runeKey(s, '<')
+	if s.FilterMode != FilterSensitive {
+		t.Fatalf("filter mode not restored: %v", s.FilterMode)
 	}
 }
 

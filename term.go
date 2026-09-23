@@ -16,16 +16,19 @@ func OpenTTY() (*TTY, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &TTY{f: f}, nil
-}
-
-func (t *TTY) MakeRaw() error {
-	saved, err := term.MakeRaw(int(t.f.Fd()))
+	t := &TTY{f: f}
+	saved, err := term.MakeRaw(int(f.Fd()))
 	if err != nil {
-		return err
+		f.Close()
+		return nil, err
 	}
 	t.saved = saved
-	return nil
+	if err := t.WriteString("\x1b[?1049h" + "\x1b[?25l"); err != nil {
+		term.Restore(int(f.Fd()), t.saved)
+		f.Close()
+		return nil, err
+	}
+	return t, nil
 }
 
 func (t *TTY) Restore() error {
@@ -50,10 +53,6 @@ func (t *TTY) WriteString(s string) error {
 
 func (t *TTY) Close() error {
 	return t.f.Close()
-}
-
-func (t *TTY) EnterAltScreen() error {
-	return t.WriteString("\x1b[?1049h" + "\x1b[?25l")
 }
 
 func (t *TTY) ExitAltScreen() error {

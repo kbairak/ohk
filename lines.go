@@ -49,11 +49,11 @@ func expandTabs(s string) string {
 	}
 	var b []byte
 	col := 0
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		c := s[i]
 		if c == '\t' {
 			n := 8 - (col % 8)
-			for j := 0; j < n; j++ {
+			for range n {
 				b = append(b, ' ')
 			}
 			col += n
