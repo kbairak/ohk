@@ -226,9 +226,15 @@ func (s *State) HandleFilterKey(k Key) {
 	case KeyBackspace:
 		if len(s.SessionQuery) > 0 {
 			s.SessionQuery = s.SessionQuery[:len(s.SessionQuery)-1]
+		} else if len(s.FilterQuery) > 0 {
+			s.FilterQuery = s.FilterQuery[:len(s.FilterQuery)-1]
 		}
 	case KeyCtrlW:
-		s.SessionQuery = dropLastWord(s.SessionQuery)
+		if s.SessionQuery != "" {
+			s.SessionQuery = dropLastWord(s.SessionQuery)
+		} else {
+			s.FilterQuery = dropLastWord(s.FilterQuery)
+		}
 	case KeyEnter:
 		candidate := s.FilterQuery + s.SessionQuery
 		if candidate == "" {

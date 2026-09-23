@@ -221,6 +221,32 @@ func TestFilterEscClears(t *testing.T) {
 	}
 }
 
+func TestFilterBackspaceEditsCommittedQuery(t *testing.T) {
+	s := newTestState("foobar\nfoo\nbar\n")
+	runeKey(s, '/')
+	for _, r := range "foo" {
+		s.HandleFilterKey(Key{Kind: KeyRune, Rune: r})
+	}
+	s.HandleFilterKey(Key{Kind: KeyEnter})
+	if s.FilterQuery != "foo" {
+		t.Fatalf("setup: %q", s.FilterQuery)
+	}
+
+	runeKey(s, '/')
+	s.HandleFilterKey(Key{Kind: KeyBackspace})
+	if s.FilterQuery != "fo" || s.SessionQuery != "" {
+		t.Fatalf("backspace: q=%q session=%q", s.FilterQuery, s.SessionQuery)
+	}
+	s.HandleFilterKey(Key{Kind: KeyCtrlW})
+	if s.FilterQuery != "" {
+		t.Fatalf("ctrl-w: q=%q", s.FilterQuery)
+	}
+	s.HandleFilterKey(Key{Kind: KeyEnter})
+	if s.Filtering || s.FilterQuery != "" {
+		t.Fatalf("enter: filtering=%v q=%q", s.Filtering, s.FilterQuery)
+	}
+}
+
 func TestFilterCtrlW(t *testing.T) {
 	s := newTestState("a\n")
 	s.SessionQuery = "foo bar  "
