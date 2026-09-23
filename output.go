@@ -23,7 +23,7 @@ func Output(s *State) []string {
 	sortInts(chosenCols)
 
 	if len(s.ColSel) == 0 {
-		if len(s.RowSel) == 0 && s.FilterQuery == "" {
+		if len(s.RowSel) == 0 && s.FilterQuery == "" && s.SortDir == SortOff {
 			out := make([]string, 0, len(s.Lines))
 			for _, l := range s.Lines {
 				out = append(out, l.Raw)

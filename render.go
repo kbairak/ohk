@@ -147,7 +147,15 @@ func renderStatus(s *State, w int) string {
 		if s.Mode == ModeRow {
 			modeName = "row"
 		}
-		text = fmt.Sprintf("[%s] filter:%q (%s) | TAB mode  / filter (TAB cycles match mode)  ENTER output  a all  i invert  >/. commit  </, pop  q quit", modeName, s.FilterQuery, s.FilterMode)
+		sortInfo := ""
+		if s.SortDir != SortOff {
+			arrow := "^"
+			if s.SortDir == SortDesc {
+				arrow = "v"
+			}
+			sortInfo = fmt.Sprintf("sort:%s col %d | ", arrow, s.SortCol+1)
+		}
+		text = fmt.Sprintf("[%s] %sfilter:%q (%s) | TAB mode  / filter (TAB cycles match mode)  s sort  ENTER output  a all  i invert  >/. commit  </, pop  q quit", modeName, sortInfo, s.FilterQuery, s.FilterMode)
 	}
 	runes := []rune(text)
 	if w < 0 {

@@ -93,3 +93,28 @@ func TestOutputEmptyChosenRows(t *testing.T) {
 		t.Fatalf("got %q; want empty", got)
 	}
 }
+
+func TestOutputSortedRawNoSelection(t *testing.T) {
+	s := NewState(NewLines([]byte("b\na\nc\n")))
+	s.SortCol = 0
+	s.SortDir = SortAsc
+	assertOut(t, Output(s), []string{"a", "b", "c"})
+}
+
+func TestOutputSortedWithRowSelection(t *testing.T) {
+	s := NewState(NewLines([]byte("b\na\nc\n")))
+	s.SortCol = 0
+	s.SortDir = SortDesc
+	for i := range s.Lines {
+		s.RowSel[i] = true
+	}
+	assertOut(t, Output(s), []string{"c", "b", "a"})
+}
+
+func TestOutputSortedWithColumnSelection(t *testing.T) {
+	s := NewState(NewLines([]byte("b 2\na 10\nc 1\n")))
+	s.SortCol = 1
+	s.SortDir = SortAsc
+	s.ColSel[1] = true
+	assertOut(t, Output(s), []string{"1", "2", "10"})
+}

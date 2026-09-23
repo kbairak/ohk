@@ -105,6 +105,7 @@ prefixes, which is also how you can tell which mode you are in:
 | `SPACE`                | select/deselect the highlighted row/column                         |
 | `a`                    | select all (respects the current mode)                             |
 | `i`                    | invert selection (respects the current mode)                       |
+| `s`                    | column mode: sort visible rows by the highlighted column (asc → desc → off) |
 | `/`                    | enter filter mode                                                  |
 | `>` or `.`             | commit output as new input, push a snapshot                        |
 | `<` or `,`             | pop the latest snapshot                                            |
@@ -207,7 +208,20 @@ projection:
   (`column -t` style).
 - **Neither selected** — all rows, raw bytes.
 - **Filter active, nothing selected** — the matching rows, raw bytes (a live grep).
-- Output order is always input order. Empty selection means "all".
+- Output order is input order, unless a sort is active (see Sorting below).
+  Empty selection means "all".
+
+### Sorting
+
+Press `s` in column mode to sort the visible rows by the highlighted column.
+Press it again to flip to descending, and a third time to clear. Pressing `s` on
+a different column switches the sort key and starts ascending. Moving the
+highlight does not change the sort key; only pressing `s` does.
+
+A cell sorts numerically when both compared cells are numbers, and
+case-insensitively as strings otherwise; ties keep their input order. Sorting
+composes with filtering: matching rows are filtered first, then sorted. `>`/`.`
+resets the sort (a snapshot restores it).
 
 ### Filter mode
 
@@ -358,6 +372,8 @@ ohke() {
 
 - Reads all of stdin **before** showing the UI — not for infinite streams.
 - Filtering has no regex mode (fuzzy / case-insensitive / case-sensitive only).
+- Sorting is numeric only when the whole cell parses as a number; values like
+  `1.2G` or `8080/tcp` sort as strings.
 - ASCII byte offsets only; no rune/wide-character awareness.
 - No SIGWINCH handling (the size is re-read every frame, so resize mostly works).
 - Lines wider than the terminal are cropped.

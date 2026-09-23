@@ -1,12 +1,24 @@
 package main
 
-import "strings"
+import (
+	"sort"
+	"strconv"
+	"strings"
+)
 
 type Mode int
 
 const (
 	ModeColumn Mode = iota
 	ModeRow
+)
+
+type SortDir int
+
+const (
+	SortOff SortDir = iota
+	SortAsc
+	SortDesc
 )
 
 type FilterMode int
@@ -71,6 +83,8 @@ type StateSnapshot struct {
 	RowHigh     int
 	FilterQuery string
 	FilterMode  FilterMode
+	SortCol     int
+	SortDir     SortDir
 }
 
 type State struct {
@@ -85,16 +99,19 @@ type State struct {
 	SessionQuery string
 	FilterQuery  string
 	FilterMode   FilterMode
+	SortCol      int
+	SortDir      SortDir
 	Snapshots    []StateSnapshot
 }
 
 func NewState(lines []Line) *State {
 	return &State{
-		Lines:  lines,
-		Cols:   ComputeColumns(lines),
-		RowSel: map[int]bool{},
-		ColSel: map[int]bool{},
-		Mode:   ModeColumn,
+		Lines:   lines,
+		Cols:    ComputeColumns(lines),
+		RowSel:  map[int]bool{},
+		ColSel:  map[int]bool{},
+		Mode:    ModeColumn,
+		SortCol: -1,
 	}
 }
 
@@ -105,7 +122,39 @@ func (s *State) VisibleRows() []int {
 			out = append(out, i)
 		}
 	}
+	if s.SortDir != SortOff && s.SortCol >= 0 && s.SortCol < len(s.Cols) {
+		sort.SliceStable(out, func(a, b int) bool {
+			if s.SortDir == SortDesc {
+				return s.lessRows(out[b], out[a])
+			}
+			return s.lessRows(out[a], out[b])
+		})
+	}
 	return out
+}
+
+func (s *State) lessRows(i, j int) bool {
+	col := s.Cols[s.SortCol]
+	a := trimCell(s.Lines[i].Expanded, col.Start, col.End)
+	b := trimCell(s.Lines[j].Expanded, col.Start, col.End)
+	if af, aok := parseNumber(a); aok {
+		if bf, bok := parseNumber(b); bok {
+			return af < bf
+		}
+	}
+	la, lb := strings.ToLower(a), strings.ToLower(b)
+	if la != lb {
+		return la < lb
+	}
+	return a < b
+}
+
+func parseNumber(s string) (float64, bool) {
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false
+	}
+	return f, true
 }
 
 func (s *State) HandleKey(k Key) Action {
@@ -152,6 +201,8 @@ func (s *State) HandleKey(k Key) Action {
 			s.selectAll()
 		case 'i':
 			s.invert()
+		case 's':
+			s.cycleSort()
 		case '/':
 			s.Filtering = true
 			s.SessionQuery = ""
@@ -310,6 +361,25 @@ func (s *State) toggleHighlight() {
 	}
 }
 
+func (s *State) cycleSort() {
+	if s.Mode != ModeColumn {
+		return
+	}
+	col := s.highlight()
+	if s.SortDir == SortOff || s.SortCol != col {
+		s.SortCol = col
+		s.SortDir = SortAsc
+		return
+	}
+	switch s.SortDir {
+	case SortAsc:
+		s.SortDir = SortDesc
+	default:
+		s.SortCol = -1
+		s.SortDir = SortOff
+	}
+}
+
 func toggleSel(m map[int]bool, i int) {
 	if m[i] {
 		delete(m, i)
@@ -369,6 +439,8 @@ func (s *State) commit() {
 		RowHigh:     s.RowHigh,
 		FilterQuery: s.FilterQuery,
 		FilterMode:  s.FilterMode,
+		SortCol:     s.SortCol,
+		SortDir:     s.SortDir,
 	}
 	s.Snapshots = append(s.Snapshots, snap)
 
@@ -386,6 +458,8 @@ func (s *State) commit() {
 	s.Filtering = false
 	s.SessionQuery = ""
 	s.FilterQuery = ""
+	s.SortCol = -1
+	s.SortDir = SortOff
 }
 
 func (s *State) pop() {
@@ -403,6 +477,8 @@ func (s *State) pop() {
 	s.RowHigh = snap.RowHigh
 	s.FilterQuery = snap.FilterQuery
 	s.FilterMode = snap.FilterMode
+	s.SortCol = snap.SortCol
+	s.SortDir = snap.SortDir
 	s.Filtering = false
 	s.SessionQuery = ""
 }

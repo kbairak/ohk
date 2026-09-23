@@ -390,6 +390,108 @@ func TestCommitPopAlternateKeys(t *testing.T) {
 	}
 }
 
+func assertInts(t *testing.T, got, want []int) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %v; want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("index %d: got %v; want %v", i, got, want)
+		}
+	}
+}
+
+func TestSortCycles(t *testing.T) {
+	s := newTestState("b\na\nc\n")
+	runeKey(s, 's')
+	if s.SortDir != SortAsc || s.SortCol != 0 {
+		t.Fatalf("first s: dir=%v col=%d", s.SortDir, s.SortCol)
+	}
+	assertInts(t, s.VisibleRows(), []int{1, 0, 2})
+	runeKey(s, 's')
+	if s.SortDir != SortDesc {
+		t.Fatalf("second s: dir=%v", s.SortDir)
+	}
+	assertInts(t, s.VisibleRows(), []int{2, 0, 1})
+	runeKey(s, 's')
+	if s.SortDir != SortOff || s.SortCol != -1 {
+		t.Fatalf("third s: dir=%v col=%d", s.SortDir, s.SortCol)
+	}
+	assertInts(t, s.VisibleRows(), []int{0, 1, 2})
+}
+
+func TestSortOnlyInColumnMode(t *testing.T) {
+	s := newTestState("b\na\n")
+	press(s, KeyTab)
+	runeKey(s, 's')
+	if s.SortDir != SortOff || s.SortCol != -1 {
+		t.Fatalf("row mode sort should be no-op: dir=%v col=%d", s.SortDir, s.SortCol)
+	}
+	if s.Mode != ModeRow {
+		t.Fatalf("row mode changed: %v", s.Mode)
+	}
+}
+
+func TestSortNumeric(t *testing.T) {
+	s := newTestState("10\n9\n2\n")
+	runeKey(s, 's')
+	assertInts(t, s.VisibleRows(), []int{2, 1, 0})
+}
+
+func TestSortCaseInsensitiveString(t *testing.T) {
+	s := newTestState("banana\nApple\ncherry\n")
+	runeKey(s, 's')
+	assertInts(t, s.VisibleRows(), []int{1, 0, 2})
+}
+
+func TestSortStableTies(t *testing.T) {
+	s := newTestState("b 1\na 1\nc 1\n")
+	runeKey(s, 'l')
+	runeKey(s, 's')
+	assertInts(t, s.VisibleRows(), []int{0, 1, 2})
+	runeKey(s, 's')
+	if s.SortDir != SortDesc {
+		t.Fatalf("dir=%v", s.SortDir)
+	}
+	assertInts(t, s.VisibleRows(), []int{0, 1, 2})
+}
+
+func TestSortSwitchColumnResetsAsc(t *testing.T) {
+	s := newTestState("b 2\na 1\nc 3\n")
+	runeKey(s, 's')
+	if s.SortCol != 0 || s.SortDir != SortAsc {
+		t.Fatalf("setup: col=%d dir=%v", s.SortCol, s.SortDir)
+	}
+	runeKey(s, 'l')
+	runeKey(s, 's')
+	if s.SortCol != 1 || s.SortDir != SortAsc {
+		t.Fatalf("switch: col=%d dir=%v", s.SortCol, s.SortDir)
+	}
+	assertInts(t, s.VisibleRows(), []int{1, 0, 2})
+}
+
+func TestSortWithFilter(t *testing.T) {
+	s := newTestState("foo 3\nbar 1\nfoo 1\nfoo 2\n")
+	s.FilterQuery = "foo"
+	runeKey(s, 'l')
+	runeKey(s, 's')
+	assertInts(t, s.VisibleRows(), []int{2, 3, 0})
+}
+
+func TestSortResetsOnCommitRestoresOnPop(t *testing.T) {
+	s := newTestState("b\na\n")
+	runeKey(s, 's')
+	runeKey(s, '>')
+	if s.SortDir != SortOff || s.SortCol != -1 {
+		t.Fatalf("commit did not reset sort: dir=%v col=%d", s.SortDir, s.SortCol)
+	}
+	runeKey(s, '<')
+	if s.SortDir != SortAsc || s.SortCol != 0 {
+		t.Fatalf("pop did not restore sort: dir=%v col=%d", s.SortDir, s.SortCol)
+	}
+}
+
 func TestQuitAndAccept(t *testing.T) {
 	s := newTestState("a\n")
 	if press(s, KeyEsc) != ActQuit {
